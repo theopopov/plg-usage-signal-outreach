@@ -1,0 +1,20 @@
+# Event & property schema mapping
+# ===============================
+# Map YOUR PostHog event shape and person properties onto the field names this
+# workflow expects. Change the values on the right to match your instance; do
+# not change the keys on the left. Copy to config/schema-map.yml.
+
+event:
+  distinct_id: distinct_id      # field holding PostHog's per-user id
+  name: event                   # field holding the event name
+  timestamp: timestamp          # ISO-8601 event time
+  properties: properties        # object holding event-level properties
+
+person:
+  # Person properties used for audience filtering, contact resolution, and the
+  # message context. These are read from the PostHog person / event payload.
+  email: email
+  name: name
+  company: company
+  plan: plan
+  marketing_consent: marketing_consent

@@ -1,0 +1,26 @@
+# Audience filters & exclusions
+# =============================
+# Applied BEFORE trigger evaluation. A user who fails these is never messaged,
+# regardless of usage. Copy to config/audience.yml and edit.
+
+include:
+  # Optional allowlist. Empty list = everyone is in-scope (subject to `exclude`).
+  plans: []                     # e.g. [free, trial] to only message self-serve tiers
+
+exclude:
+  # Internal + test accounts — ALWAYS exclude. Employees and QA are not prospects,
+  # and a data backfill can otherwise trigger a storm of internal "leads".
+  email_domains:
+    - example.com
+    - test.local
+    - yourcompany.com           # <-- replace with YOUR company domain(s)
+  emails: []                    # specific addresses to exclude
+  # Users who unsubscribed / opted out. Point this at your suppression source.
+  # One address per line; blank lines and #-comments ignored.
+  suppression_list: config/suppression.example.txt
+
+require:
+  # A person must satisfy ALL of these to be eligible.
+  has_email: true               # need a resolvable contact
+  marketing_consent: false      # set true to REQUIRE an explicit consent flag on the person
+                                # record (see docs/COMPLIANCE.md for why this matters)

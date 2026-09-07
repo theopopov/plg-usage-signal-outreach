@@ -1,0 +1,40 @@
+# ---- Secrets & credentials (NEVER commit) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# ---- User / product data (NEVER commit) ----
+# Real event exports, resolved contacts, and send logs are user data.
+# Only the synthetic fixtures under examples/ are tracked.
+data/
+exports/
+*.ndjson
+events*.json
+!examples/synthetic-events.json
+send-log*.json
+state/
+config/suppression.txt          # your real suppression list; only the .example is tracked
+
+# ---- Local config copies (keep the .example versions only) ----
+config/triggers.yml
+config/audience.yml
+config/schema-map.yml
+litellm/config.yaml
+
+# ---- Node ----
+node_modules/
+npm-debug.log*
+.npm/
+
+# ---- Docker / n8n local volumes ----
+n8n_data/
+postgres_data/
+
+# ---- OS / editor ----
+.DS_Store
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,6 @@
+# Suppression list — one email per line. Blank lines and #-comments ignored.
+# These users are NEVER messaged (unsubscribed / opted out / do-not-contact).
+# The addresses below are synthetic examples. Replace with your real list and
+# keep the real file OUT of git (config/suppression.txt is gitignored).
+optout@nimbusworks.io
+donotcontact@dataloom.io

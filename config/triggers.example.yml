@@ -1,0 +1,62 @@
+# Trigger definitions
+# ===================
+# A trigger fires when a user crosses a USAGE THRESHOLD: a cumulative count of a
+# product event, over a rolling time window, with optional property filters and
+# negative (suppression) conditions. Copy this file to config/triggers.yml and
+# tune it to YOUR product. Nothing here is tuned to any real product.
+#
+# Duration format: <number><unit>, unit ∈ {h, d}. e.g. 24h, 7d, 30d, 90d.
+
+triggers:
+  # ---------------------------------------------------------------
+  # Activation nudge — a new user has repeated the core action enough
+  # to be "activated". Reach out to help them go deeper.
+  # ---------------------------------------------------------------
+  - id: activation-nudge
+    description: >-
+      User performed the core action enough times in the window to look activated.
+    event: core_action_completed        # PostHog event name (see schema-map)
+    threshold: 5                          # cumulative occurrences required
+    window: 7d                            # rolling window the count is measured over
+    frequency:
+      cooldown: 30d                       # min gap between messages to the SAME person for THIS trigger
+      max_per_person: 1                   # cap on messages for this trigger per person...
+      lookback: 90d                       # ...measured over this lookback
+    negative_conditions:                  # if ANY of these occurred in `window`, DO NOT fire
+      - event: upgraded_plan              # already converted — nudging would be noise
+      - event: contacted_by_sales         # sales already in the loop — avoid conflicting touch
+    template: activation-nudge
+
+  # ---------------------------------------------------------------
+  # Feature-adoption / expansion — heavy use of an advanced feature.
+  # property_filters narrows the event to a specific feature.
+  # ---------------------------------------------------------------
+  - id: feature-adoption
+    description: Repeated use of a specific advanced feature — an expansion signal.
+    event: advanced_feature_used
+    property_filters:                     # only count events whose properties match ALL of these
+      feature: reports
+    threshold: 10
+    window: 14d
+    frequency:
+      cooldown: 45d
+      max_per_person: 2
+      lookback: 180d
+    negative_conditions: []
+    template: feature-adoption
+
+  # ---------------------------------------------------------------
+  # Usage-limit / upgrade — user is approaching a plan or quota limit.
+  # ---------------------------------------------------------------
+  - id: usage-limit-approaching
+    description: User is approaching a plan/usage limit — an upgrade trigger.
+    event: quota_consumed
+    threshold: 6                          # count of quota-consuming operations in the window
+    window: 30d
+    frequency:
+      cooldown: 14d
+      max_per_person: 3
+      lookback: 90d
+    negative_conditions:
+      - event: upgraded_plan
+    template: usage-limit

@@ -1,0 +1,571 @@
+{
+  "name": "PLG Usage-Signal Outreach (PostHog → n8n → LiteLLM → Twenty + Slack)",
+  "meta": {
+    "description": "A PostHog product-usage event webhook fires; n8n checks audience eligibility, computes the cumulative usage threshold via a HogQL query, applies negative conditions + cooldown/frequency caps, drafts a context-aware message via a self-hosted LiteLLM proxy, and (unless DRY_RUN) writes the lead to Twenty CRM and notifies a rep in Slack to review and send. Human-in-the-loop: no message is auto-sent to the end user. All external calls use $env credentials and placeholder-shaped requests you adapt to your instances."
+  },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "plg-signal",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000001",
+      "name": "Webhook — PostHog Event",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1400,
+        300
+      ],
+      "webhookId": "plg-signal-webhook",
+      "notes": "Point a PostHog \"Webhook destination\" (CDP -> Destinations) at this URL, filtered to the events your triggers care about. Expected body: { distinct_id, event, timestamp, properties:{ email,name,company,plan,marketing_consent, ... } }. See src/posthog-webhook.example.json."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "body",
+              "value": "={{ $json.body || $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000002",
+      "name": "Normalize Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1180,
+        300
+      ],
+      "notes": "Pass the PostHog payload through. Adjust here if your PostHog webhook wraps the body differently (see config/schema-map.yml for field mapping)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Match the incoming event to a trigger, and check audience eligibility.\n// NOTE: this config MIRRORS config/triggers.yml + config/audience.yml. n8n\n// Code nodes cannot import repo files, so the config is inlined here. Keep the\n// two in sync (the offline harness in src/ reads the YAML directly).\n\nconst TRIGGERS = [\n  { id: 'activation-nudge', event: 'core_action_completed', property_filters: {}, threshold: 5, window: '7d',\n    frequency: { cooldown: '30d', max_per_person: 1, lookback: '90d' },\n    negative_conditions: [{ event: 'upgraded_plan' }, { event: 'contacted_by_sales' }], template: 'activation-nudge' },\n  { id: 'feature-adoption', event: 'advanced_feature_used', property_filters: { feature: 'reports' }, threshold: 10, window: '14d',\n    frequency: { cooldown: '45d', max_per_person: 2, lookback: '180d' },\n    negative_conditions: [], template: 'feature-adoption' },\n  { id: 'usage-limit-approaching', event: 'quota_consumed', property_filters: {}, threshold: 6, window: '30d',\n    frequency: { cooldown: '14d', max_per_person: 3, lookback: '90d' },\n    negative_conditions: [{ event: 'upgraded_plan' }], template: 'usage-limit' },\n];\nconst AUDIENCE = {\n  include: { plans: [] },\n  exclude: { email_domains: ['example.com', 'test.local', 'yourcompany.com'], emails: [], suppression: ['optout@nimbusworks.io', 'donotcontact@dataloom.io'] },\n  require: { has_email: true, marketing_consent: false },\n};\n\nfunction parseDur(s) { const m = /^(\\d+)\\s*([hd])$/.exec(String(s).trim()); const n = +m[1]; return m[2] === 'h' ? n * 3600e3 : n * 86400e3; }\n\nconst b = $json.body || $json;\nconst eventName = b.event;\nconst props = b.properties || {};\nconst person = {\n  email: (props.email || '').toLowerCase(),\n  name: props.name || '',\n  company: props.company || '',\n  plan: props.plan || '',\n  marketingConsent: props.marketing_consent === true || props.marketing_consent === 'true',\n};\nconst distinctId = b.distinct_id;\n\nfunction fail(reason) { return [{ json: { proceed: false, reason, person, distinctId, eventName } }]; }\n\n// audience\nif (AUDIENCE.require.has_email && !person.email) return fail('no-email');\nif (AUDIENCE.require.marketing_consent && !person.marketingConsent) return fail('no-marketing-consent');\nconst domain = person.email.split('@')[1] || '';\nif (AUDIENCE.exclude.email_domains.map(d => d.toLowerCase()).includes(domain)) return fail('excluded-domain:' + domain);\nif (AUDIENCE.exclude.emails.map(e => e.toLowerCase()).includes(person.email)) return fail('excluded-email');\nif (AUDIENCE.exclude.suppression.map(e => e.toLowerCase()).includes(person.email)) return fail('suppressed');\nif (AUDIENCE.include.plans.length && !AUDIENCE.include.plans.includes(person.plan)) return fail('plan-not-in-scope:' + person.plan);\n\n// match trigger (first whose event + property_filters match this event)\nconst trigger = TRIGGERS.find(t => t.event === eventName && Object.entries(t.property_filters).every(([k, v]) => props[k] === v));\nif (!trigger) return fail('no-matching-trigger:' + eventName);\n\n// build the HogQL that counts the trigger event and any negative events in the window\nconst windowHours = parseDur(trigger.window) / 3600e3;\nconst negEvents = (trigger.negative_conditions || []).map(c => c.event);\nconst negList = negEvents.length ? negEvents.map(e => \"'\" + e + \"'\").join(',') : \"''\";\nconst propClause = Object.entries(trigger.property_filters).map(([k, v]) => \" AND properties.\" + k + \" = '\" + v + \"'\").join('');\nconst hogql =\n  \"SELECT countIf(event = '\" + trigger.event + \"'\" + propClause + \") AS trigger_count, \" +\n  \"countIf(event IN (\" + negList + \")) AS negative_count \" +\n  \"FROM events WHERE distinct_id = '\" + distinctId + \"' \" +\n  \"AND timestamp >= now() - INTERVAL \" + windowHours + \" HOUR\";\n\nreturn [{ json: { proceed: true, reason: 'matched', distinctId, eventName, person,\n  trigger: { id: trigger.id, event: trigger.event, threshold: trigger.threshold, window: trigger.window,\n             frequency: trigger.frequency, template: trigger.template },\n  hogql } }];\n"
+      },
+      "id": "p4a10000-0000-4000-8000-000000000003",
+      "name": "Match Trigger & Audience",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.proceed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000004",
+      "name": "IF Eligible & Matched",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, action: 'skipped', reason: $json.reason }) }}",
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000005",
+      "name": "Respond — Skipped",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -520,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.POSTHOG_HOST }}/api/projects/{{ $env.POSTHOG_PROJECT_ID }}/query",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.POSTHOG_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: { kind: 'HogQLQuery', query: $json.hogql } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "p4a10000-0000-4000-8000-000000000006",
+      "name": "Query PostHog Usage (HogQL)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -520,
+        220
+      ],
+      "notes": "PostHog Query API (HogQL). Placeholder: verify the endpoint + HogQL syntax for your PostHog version. Returns { results: [[trigger_count, negative_count]] }. This is where the CUMULATIVE threshold is computed (PostHog native webhooks fire per-event; the aggregate is evaluated here, as the source describes: the threshold rule is glue in the orchestrator)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read PostHog's count result, apply threshold + negative + cooldown/frequency.\nconst prev = $('Match Trigger & Audience').item.json;\nconst trigger = prev.trigger;\n\n// PostHog query API returns { results: [[trigger_count, negative_count]] }.\nlet triggerCount = 0, negativeCount = 0;\ntry {\n  const r = $json.results || $json.result || [];\n  if (r[0]) { triggerCount = Number(r[0][0]) || 0; negativeCount = Number(r[0][1]) || 0; }\n} catch (e) {}\n\nfunction parseDur(s) { const m = /^(\\d+)\\s*([hd])$/.exec(String(s).trim()); const n = +m[1]; return m[2] === 'h' ? n * 3600e3 : n * 86400e3; }\nconst now = Date.now();\nconst out = { ...prev, triggerCount, negativeCount };\n\nif (triggerCount < trigger.threshold) return [{ json: { ...out, fire: false, reason: 'below-threshold:' + triggerCount + '/' + trigger.threshold } }];\nif (negativeCount > 0) return [{ json: { ...out, fire: false, reason: 'negative-condition-present' } }];\n\n// Cooldown / frequency cap using workflow static data.\n// NOTE: workflow static data is a BASIC durable store (per-workflow). For\n// production, swap this for Postgres/Redis so caps survive across workflows and\n// instances. Mirrors the offline harness's send-history logic.\nconst store = $getWorkflowStaticData('global');\nstore.sends = Array.isArray(store.sends) ? store.sends : [];\nconst key = prev.person.email || prev.distinctId;\nconst mine = store.sends.filter(s => s.key === key && s.triggerId === trigger.id);\nconst f = trigger.frequency || {};\nif (f.cooldown) { const cut = now - parseDur(f.cooldown); if (mine.some(s => s.at >= cut)) return [{ json: { ...out, fire: false, reason: 'cooldown:' + f.cooldown } }]; }\nif (f.max_per_person != null && f.lookback) { const cut = now - parseDur(f.lookback); if (mine.filter(s => s.at >= cut).length >= f.max_per_person) return [{ json: { ...out, fire: false, reason: 'frequency-cap' } }]; }\n\nreturn [{ json: { ...out, fire: true, reason: 'fire' } }];\n"
+      },
+      "id": "p4a10000-0000-4000-8000-000000000007",
+      "name": "Evaluate + Cooldown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.fire }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000008",
+      "name": "IF Fire",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, action: 'no-send', reason: $json.reason, triggerCount: $json.triggerCount }) }}",
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000009",
+      "name": "Respond — No Send",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        140,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the LiteLLM prompt from the matched trigger's template + usage context.\n// Template text is inlined here (mirrors config/templates/*.md). Keep in sync.\nconst TEMPLATES = {\n  'activation-nudge':\n    'You are a product specialist writing a short, genuinely helpful message to a user who is actively using the product. Do not be salesy. Reference their real usage. No discounts, no urgency, no hype.',\n  'feature-adoption':\n    'You are a product specialist writing to a user who has been heavily using an advanced feature. Be concise and useful, not promotional.',\n  'usage-limit':\n    'You are a product specialist writing to a user approaching a plan/usage limit. Be helpful and factual. Do not pressure them. Do not invent specific prices or limits.',\n};\nconst d = $json;\nconst first = (d.person.name || '').trim().split(/\\s+/)[0] || 'there';\nconst sys = TEMPLATES[d.trigger.template] || TEMPLATES['activation-nudge'];\nconst userMsg =\n  'Context:\\n' +\n  '- User: ' + first + ' at ' + (d.person.company || 'your team') + ' (plan: ' + (d.person.plan || 'unknown') + ')\\n' +\n  '- Signal: \"' + d.trigger.event + '\" reached ' + d.triggerCount + ' in the last ' + d.trigger.window + '\\n\\n' +\n  'Write 3-4 sentences that acknowledge specifically what they have been doing, offer one concrete next step, and end with a low-pressure open question. Return only the message body.';\nreturn [{ json: { ...d, firstName: first, llm: { system: sys, user: userMsg } } }];\n"
+      },
+      "id": "p4a10000-0000-4000-8000-000000000010",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LITELLM_BASE_URL }}/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LITELLM_MASTER_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'outreach-drafter', max_tokens: 300, messages: [ { role: 'system', content: $json.llm.system }, { role: 'user', content: $json.llm.user } ] }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "p4a10000-0000-4000-8000-000000000011",
+      "name": "Compose Message (LiteLLM)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        220
+      ],
+      "notes": "Self-hosted LiteLLM proxy, OpenAI-compatible. Returns choices[0].message.content = the drafted message. Even in DRY_RUN this runs (small token cost) so the preview shows the REAL draft; the offline harness in src/ uses a deterministic stand-in instead."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c3",
+              "leftValue": "={{ $env.DRY_RUN }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000012",
+      "name": "IF Dry Run",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        580,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, action: 'dry-run-preview', trigger: $('Build Prompt').item.json.trigger.id, contact: { name: $('Build Prompt').item.json.person.name, email: $('Build Prompt').item.json.person.email, company: $('Build Prompt').item.json.person.company }, draft: ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '(no draft returned)', note: 'DRY_RUN=true: no CRM write, no Slack notify, no send recorded.' }) }}",
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000013",
+      "name": "Respond — Dry-Run Preview",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.TWENTY_API_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.TWENTY_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: 'mutation Create($data: PersonCreateInput!) { createPerson(data: $data) { id } }', variables: { data: { emails: { primaryEmail: $('Build Prompt').item.json.person.email }, name: { firstName: $('Build Prompt').item.json.firstName, lastName: '' }, jobTitle: 'PLG signal: ' + $('Build Prompt').item.json.trigger.id } } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "p4a10000-0000-4000-8000-000000000014",
+      "name": "Create CRM Record (Twenty)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        220
+      ],
+      "notes": "Twenty GraphQL. PLACEHOLDER mutation - adapt to your workspace schema (custom fields, dedupe/upsert, and a linked Note object carrying the drafted message + signal). Twenty auto-generates both REST (/rest) and GraphQL (/graphql) CRUD; see docs.twenty.com. For real use, resolve-or-create the person (query by email first) rather than blind create."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SLACK_BOT_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: 'PLG signal: ' + $('Build Prompt').item.json.trigger.id + ' — ' + $('Build Prompt').item.json.person.company, blocks: [ { type: 'section', text: { type: 'mrkdwn', text: '*Product-usage signal:* ' + $('Build Prompt').item.json.trigger.id + '\\n*User:* ' + $('Build Prompt').item.json.person.name + ' <' + $('Build Prompt').item.json.person.email + '> (' + $('Build Prompt').item.json.person.company + ')\\n*Signal:* ' + $('Build Prompt').item.json.trigger.event + ' reached ' + $('Build Prompt').item.json.triggerCount + ' in ' + $('Build Prompt').item.json.trigger.window } }, { type: 'section', text: { type: 'mrkdwn', text: '*Suggested draft (review before sending):*\\n' + (($('Compose Message (LiteLLM)').item.json.choices && $('Compose Message (LiteLLM)').item.json.choices[0].message.content) || '(no draft)') } } ] }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "p4a10000-0000-4000-8000-000000000015",
+      "name": "Notify Slack (rep)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        220
+      ],
+      "notes": "Human-in-the-loop: this pings a REP with the drafted message to review and send. The workflow does NOT auto-send to the end user (the source stack names no email/ESP). Requires a bot token with chat:write."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Persist the send so cooldown/frequency caps apply next time.\nconst store = $getWorkflowStaticData('global');\nstore.sends = Array.isArray(store.sends) ? store.sends : [];\nconst d = $('Build Prompt').item.json;\nstore.sends.push({ key: d.person.email || d.distinctId, triggerId: d.trigger.id, at: Date.now() });\nreturn [{ json: { recorded: true, key: d.person.email || d.distinctId, triggerId: d.trigger.id } }];\n"
+      },
+      "id": "p4a10000-0000-4000-8000-000000000016",
+      "name": "Record Send",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, action: 'sent-to-rep', trigger: $('Build Prompt').item.json.trigger.id, contact: $('Build Prompt').item.json.person.email }) }}",
+        "options": {}
+      },
+      "id": "p4a10000-0000-4000-8000-000000000017",
+      "name": "Respond — Sent",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1460,
+        220
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook — PostHog Event": {
+      "main": [
+        [
+          {
+            "node": "Normalize Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Event": {
+      "main": [
+        [
+          {
+            "node": "Match Trigger & Audience",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Trigger & Audience": {
+      "main": [
+        [
+          {
+            "node": "IF Eligible & Matched",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Eligible & Matched": {
+      "main": [
+        [
+          {
+            "node": "Query PostHog Usage (HogQL)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond — Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query PostHog Usage (HogQL)": {
+      "main": [
+        [
+          {
+            "node": "Evaluate + Cooldown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate + Cooldown": {
+      "main": [
+        [
+          {
+            "node": "IF Fire",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Fire": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond — No Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Compose Message (LiteLLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Message (LiteLLM)": {
+      "main": [
+        [
+          {
+            "node": "IF Dry Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Dry Run": {
+      "main": [
+        [
+          {
+            "node": "Respond — Dry-Run Preview",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create CRM Record (Twenty)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create CRM Record (Twenty)": {
+      "main": [
+        [
+          {
+            "node": "Notify Slack (rep)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Slack (rep)": {
+      "main": [
+        [
+          {
+            "node": "Record Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Send": {
+      "main": [
+        [
+          {
+            "node": "Respond — Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": [
+    {
+      "name": "plg-signal-outreach"
+    }
+  ]
+}

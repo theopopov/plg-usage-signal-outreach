@@ -1,0 +1,21 @@
+# LiteLLM proxy configuration
+# ===========================
+# Copy to litellm/config.yaml. NO API KEYS live in this file — keys are read
+# from environment variables (os.environ/...) supplied via .env / docker-compose.
+#
+# The n8n workflow calls this proxy at an OpenAI-compatible endpoint
+# (POST /v1/chat/completions) using the model alias `outreach-drafter`.
+
+model_list:
+  - model_name: outreach-drafter               # the alias the workflow calls; keep this name
+    litellm_params:
+      model: anthropic/claude-sonnet-5          # swap for any provider LiteLLM supports
+      api_key: os.environ/LLM_PROVIDER_API_KEY  # upstream provider key (never hardcode)
+
+general_settings:
+  # Protect the proxy: the workflow sends this as `Authorization: Bearer <key>`.
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  drop_params: true       # tolerate provider-specific param differences
+  request_timeout: 30

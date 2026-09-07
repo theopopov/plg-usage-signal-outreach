@@ -1,0 +1,73 @@
+{
+  "_meta": {
+    "note": "FULLY SYNTHETIC data. No real users, companies, or product. Emails/domains are invented and non-routable. Used only to verify workflow LOGIC offline. It proves nothing about any real product's usage.",
+    "now": "2026-09-07T12:00:00Z",
+    "prior_sends": [
+      {
+        "personKey": "ivy@fjordcloud.io",
+        "triggerId": "usage-limit-approaching",
+        "at": "2026-09-04T10:00:00Z",
+        "comment": "Ivy was messaged for this trigger 3 days ago -> inside the 14d cooldown."
+      }
+    ],
+    "expected_outcomes": {
+      "priya@brightmetric.io": "activation-nudge FIRES (6 >= 5 in 7d)",
+      "lena@dataloom.io": "SUPPRESSED (negative condition: upgraded_plan in window)",
+      "marco@yourcompany.com": "INELIGIBLE (excluded internal domain)",
+      "sam@nimbusworks.io": "feature-adoption FIRES (11 reports uses >= 10 in 14d; 1 dashboards use does not count)",
+      "ivy@fjordcloud.io": "SUPPRESSED (cooldown: prior send within 14d)",
+      "optout@nimbusworks.io": "INELIGIBLE (on suppression list)",
+      "dana@northwind-labs.io": "NO TRIGGER (3 < 5 core actions)"
+    }
+  },
+  "events": [
+    { "distinct_id": "u_priya", "event": "core_action_completed", "timestamp": "2026-09-02T09:10:00Z", "properties": { "email": "priya@brightmetric.io", "name": "Priya Nadeya", "company": "Brightmetric", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_priya", "event": "core_action_completed", "timestamp": "2026-09-03T11:20:00Z", "properties": { "email": "priya@brightmetric.io", "name": "Priya Nadeya", "company": "Brightmetric", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_priya", "event": "core_action_completed", "timestamp": "2026-09-04T14:05:00Z", "properties": { "email": "priya@brightmetric.io", "name": "Priya Nadeya", "company": "Brightmetric", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_priya", "event": "core_action_completed", "timestamp": "2026-09-05T08:45:00Z", "properties": { "email": "priya@brightmetric.io", "name": "Priya Nadeya", "company": "Brightmetric", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_priya", "event": "core_action_completed", "timestamp": "2026-09-06T16:30:00Z", "properties": { "email": "priya@brightmetric.io", "name": "Priya Nadeya", "company": "Brightmetric", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_priya", "event": "core_action_completed", "timestamp": "2026-09-07T10:15:00Z", "properties": { "email": "priya@brightmetric.io", "name": "Priya Nadeya", "company": "Brightmetric", "plan": "free", "marketing_consent": true } },
+
+    { "distinct_id": "u_lena", "event": "core_action_completed", "timestamp": "2026-09-02T10:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_lena", "event": "core_action_completed", "timestamp": "2026-09-03T10:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_lena", "event": "core_action_completed", "timestamp": "2026-09-04T10:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_lena", "event": "upgraded_plan", "timestamp": "2026-09-05T13:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "pro", "marketing_consent": true } },
+    { "distinct_id": "u_lena", "event": "core_action_completed", "timestamp": "2026-09-06T10:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "pro", "marketing_consent": true } },
+    { "distinct_id": "u_lena", "event": "core_action_completed", "timestamp": "2026-09-06T15:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "pro", "marketing_consent": true } },
+    { "distinct_id": "u_lena", "event": "core_action_completed", "timestamp": "2026-09-07T09:00:00Z", "properties": { "email": "lena@dataloom.io", "name": "Lena Ortiz", "company": "Dataloom", "plan": "pro", "marketing_consent": true } },
+
+    { "distinct_id": "u_marco", "event": "core_action_completed", "timestamp": "2026-09-06T09:00:00Z", "properties": { "email": "marco@yourcompany.com", "name": "Marco Feld", "company": "YourCompany (internal)", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_marco", "event": "core_action_completed", "timestamp": "2026-09-07T09:00:00Z", "properties": { "email": "marco@yourcompany.com", "name": "Marco Feld", "company": "YourCompany (internal)", "plan": "trial", "marketing_consent": true } },
+
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-08-27T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-08-28T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-08-29T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-08-31T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-01T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-02T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-03T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-04T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-05T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-06T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-07T09:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "reports" } },
+    { "distinct_id": "u_sam", "event": "advanced_feature_used", "timestamp": "2026-09-07T11:00:00Z", "properties": { "email": "sam@nimbusworks.io", "name": "Sam Rhee", "company": "Nimbusworks", "plan": "free", "marketing_consent": true, "feature": "dashboards" } },
+
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-08-20T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-08-24T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-08-28T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-09-01T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-09-03T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-09-05T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+    { "distinct_id": "u_ivy", "event": "quota_consumed", "timestamp": "2026-09-06T09:00:00Z", "properties": { "email": "ivy@fjordcloud.io", "name": "Ivy Chen", "company": "Fjordcloud", "plan": "trial", "marketing_consent": true } },
+
+    { "distinct_id": "u_rae", "event": "core_action_completed", "timestamp": "2026-09-06T09:00:00Z", "properties": { "email": "optout@nimbusworks.io", "name": "Rae Colton", "company": "Nimbusworks", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_rae", "event": "core_action_completed", "timestamp": "2026-09-06T12:00:00Z", "properties": { "email": "optout@nimbusworks.io", "name": "Rae Colton", "company": "Nimbusworks", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_rae", "event": "core_action_completed", "timestamp": "2026-09-07T09:00:00Z", "properties": { "email": "optout@nimbusworks.io", "name": "Rae Colton", "company": "Nimbusworks", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_rae", "event": "core_action_completed", "timestamp": "2026-09-07T10:00:00Z", "properties": { "email": "optout@nimbusworks.io", "name": "Rae Colton", "company": "Nimbusworks", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_rae", "event": "core_action_completed", "timestamp": "2026-09-07T11:00:00Z", "properties": { "email": "optout@nimbusworks.io", "name": "Rae Colton", "company": "Nimbusworks", "plan": "free", "marketing_consent": true } },
+
+    { "distinct_id": "u_dana", "event": "core_action_completed", "timestamp": "2026-09-05T09:00:00Z", "properties": { "email": "dana@northwind-labs.io", "name": "Dana Whitfield", "company": "Northwind Labs", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_dana", "event": "core_action_completed", "timestamp": "2026-09-06T09:00:00Z", "properties": { "email": "dana@northwind-labs.io", "name": "Dana Whitfield", "company": "Northwind Labs", "plan": "free", "marketing_consent": true } },
+    { "distinct_id": "u_dana", "event": "core_action_completed", "timestamp": "2026-09-07T09:00:00Z", "properties": { "email": "dana@northwind-labs.io", "name": "Dana Whitfield", "company": "Northwind Labs", "plan": "free", "marketing_consent": true } }
+  ]
+}

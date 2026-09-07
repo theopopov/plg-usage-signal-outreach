@@ -1,0 +1,13 @@
+{
+  "_comment": "Example body that a PostHog Webhook destination (CDP -> Destinations) should POST to the n8n webhook. Configure the destination's payload template to emit these fields. distinct_id + event + timestamp are PostHog-native; the `properties` you include are up to your instrumentation (they must contain the person fields your schema-map.yml references). This example is synthetic.",
+  "distinct_id": "u_priya",
+  "event": "core_action_completed",
+  "timestamp": "2026-09-07T10:15:00Z",
+  "properties": {
+    "email": "priya@brightmetric.io",
+    "name": "Priya Nadeya",
+    "company": "Brightmetric",
+    "plan": "free",
+    "marketing_consent": true
+  }
+}

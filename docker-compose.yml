@@ -1,0 +1,91 @@
+# PLG usage-signal outreach — self-hosted orchestration stack
+# ===========================================================
+# `docker compose up -d` starts three self-hosted services:
+#   - n8n       (orchestrator + editor UI)  at http://localhost:5678
+#   - postgres  (n8n's execution/credential store)
+#   - litellm   (OpenAI-compatible proxy)   at http://localhost:4000
+#
+# TWO services are intentionally NOT bundled here, because the source workflow
+# points at them as external systems and their official self-host stacks are
+# large:
+#   - PostHog  — run your own (github.com/PostHog/posthog docker-compose) or use
+#                PostHog Cloud. Set POSTHOG_HOST / POSTHOG_PROJECT_ID / POSTHOG_API_KEY.
+#   - Twenty   — run your own (github.com/twentyhq/twenty) or use Twenty Cloud.
+#                Set TWENTY_API_URL / TWENTY_API_KEY.
+#
+# Image tags are pinned to versions verified in Sep 2026. Confirm the tags still
+# exist on the registry before a production deploy; bump deliberately.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-n8n_local_password_change_me}
+      POSTGRES_DB: n8n
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  n8n:
+    image: n8nio/n8n:1.123.77
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    environment:
+      # --- n8n <-> Postgres ---
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-n8n_local_password_change_me}
+
+      # --- n8n basics ---
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      GENERIC_TIMEZONE: UTC
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change_me_to_a_long_random_32char_string}
+
+      # --- Values the workflow reads via $env.* (placeholders come from .env) ---
+      POSTHOG_HOST: ${POSTHOG_HOST:-https://posthog.example}
+      POSTHOG_PROJECT_ID: ${POSTHOG_PROJECT_ID:-REPLACE_ME}
+      POSTHOG_API_KEY: ${POSTHOG_API_KEY:-REPLACE_ME}
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-REPLACE_ME_local_proxy_key}
+      TWENTY_API_URL: ${TWENTY_API_URL:-https://twenty.example/graphql}
+      TWENTY_API_KEY: ${TWENTY_API_KEY:-REPLACE_ME}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-REPLACE_ME}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-REPLACE_ME}
+      DRY_RUN: ${DRY_RUN:-true}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  litellm:
+    # Pinned to a post-incident release (v1.100.0, Sep 2026 — well after the
+    # March 2026 supply-chain incident and its clean v1.83.0 remediation).
+    image: ghcr.io/berriai/litellm:v1.100.0
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LLM_PROVIDER_API_KEY: ${LLM_PROVIDER_API_KEY:-REPLACE_ME}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-REPLACE_ME_local_proxy_key}
+    volumes:
+      # Provide your own config: `cp litellm/config.example.yaml litellm/config.yaml`
+      - ./litellm/config.yaml:/app/config.yaml:ro
+
+volumes:
+  postgres_data:
+  n8n_data:

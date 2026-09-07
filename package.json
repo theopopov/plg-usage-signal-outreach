@@ -1,0 +1,17 @@
+{
+  "name": "plg-signal-outreach-dryrun",
+  "version": "1.0.0",
+  "description": "Offline dry-run harness for the PLG usage-signal outreach workflow.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dry-run": "node src/dry-run.js"
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0"
+  }
+}
