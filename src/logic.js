@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 plg-signal-outreach contributors
+// SPDX-License-Identifier: MIT
 // Core trigger / audience / cooldown / compose logic.
 // =====================================================
 // These are PURE functions with no I/O. They are the single reference

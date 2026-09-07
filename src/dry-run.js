@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: 2026 plg-signal-outreach contributors
+// SPDX-License-Identifier: MIT
 // Offline dry-run harness.
 // =========================
 // Replays synthetic PostHog-shaped events through the REAL decision logic in

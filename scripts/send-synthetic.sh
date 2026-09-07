@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 plg-signal-outreach contributors
+# SPDX-License-Identifier: MIT
 # Replay the synthetic events at a RUNNING n8n webhook (the deployed workflow),
 # to watch it execute node-by-node in the n8n UI. This is the live-stack analog
 # of the offline harness (src/dry-run.js). Keep DRY_RUN=true in n8n while testing.
