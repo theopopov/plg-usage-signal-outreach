@@ -19,20 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This repository is orchestration/glue only: it does not vendor, bundle, or
-modify the source code of the tools it integrates (PostHog, n8n, LiteLLM,
-Twenty, Slack). Those tools are pulled as their own official images/services
-and are governed by their own licenses:
-
-  - PostHog  — MIT (core); `ee/` directory proprietary
-  - n8n      — Sustainable Use License (fair-code, source-available)
-  - LiteLLM  — MIT (core); `enterprise/` directory proprietary
-  - Twenty   — AGPL-3.0 (with an "Application Exception" for API use)
-  - Slack    — proprietary service
-
-Running these as separate services and calling them over their published
-network APIs does not place this repository under their licenses. See
-docs/COMPLIANCE.md and README.md for details. This is not legal advice.
